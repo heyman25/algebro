@@ -4,6 +4,7 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import QuestionPage from './components/QuestionPage';
 import './styles/global.css';
+import '@wiris/mathtype-generic/styles.css';
 
 function App() {
   return (
