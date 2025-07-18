@@ -2,6 +2,14 @@
 
 A modern web application for practicing mathematics questions with intelligent question recommendations.
 
+## To Run
+In terminal:
+uvicorn backend:app --reload
+
+In another terminal:
+npm i
+npm run start
+
 ## Features
 
 - User authentication with Supabase
