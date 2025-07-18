@@ -473,7 +473,7 @@ html {
 
 .mathquill-editor .mq-math-mode {
   color: var(--deep-gray);
-}
+  }
 
 .mathquill-editor .mq-cursor {
   border-color: var(--warm-coral);
