@@ -4,6 +4,7 @@ A modern web application for practicing mathematics questions with intelligent q
 
 ## To Run
 In terminal:
+pip install uvicorn
 uvicorn backend:app --reload
 
 In another terminal:
