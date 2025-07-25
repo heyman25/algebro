@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import numpy as np
+import uvicorn
 
 from Algebro import load_questions, get_question_text_and_embedding, select_next_question
 
@@ -10,7 +11,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],  # React frontend origins
+    allow_origins=["http://localhost:8000"],  # React frontend origin
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -58,3 +59,6 @@ def get_next_question(payload: NextInput):
         "embedding": embedding.tolist(),
         "remaining_questions": new_remaining
     }
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8001)

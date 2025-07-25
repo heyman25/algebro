@@ -2,12 +2,15 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import 'mathquill/build/mathquill.css';
+import 'katex/dist/katex.min.css';
+import { InlineMath, BlockMath } from 'react-katex';
 
 // Declare global window interface
 declare global {
   interface Window {
     jQuery: any;
     $: any;
+    MathQuill: any;
   }
 }
 
@@ -16,7 +19,7 @@ const $ = require('jquery');
 window.jQuery = $;
 window.$ = $;
 require('mathquill/build/mathquill.js');
-const MQ = (window as any).MathQuill.getInterface(2);
+const MQ = window.MathQuill.getInterface(2);
 
 interface Question {
   content: string;
@@ -32,30 +35,60 @@ const QuestionPage = () => {
   const mathFieldRef = useRef<any>(null);
   const mathInputRef = useRef<HTMLSpanElement>(null);
 
+  const insertSymbol = (symbol: string) => {
+    if (mathFieldRef.current) {
+      mathFieldRef.current.cmd(symbol);
+      mathFieldRef.current.focus();
+    }
+  };
+
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
   useEffect(() => {
-    if (mathInputRef.current) {
-      mathFieldRef.current = MQ.MathField(mathInputRef.current, {
-        spaceBehavesLikeTab: true,
-        handlers: {
-          edit: () => {
-            if (mathFieldRef.current) {
-              setUserAnswer(mathFieldRef.current.latex());
+    if (mathInputRef.current && !mathFieldRef.current) {
+      try {
+        mathFieldRef.current = MQ.MathField(mathInputRef.current, {
+          spaceBehavesLikeTab: true,
+          handlers: {
+            edit: () => {
+              if (mathFieldRef.current) {
+                const latex = mathFieldRef.current.latex();
+                setUserAnswer(latex);
+              }
+            },
+            enter: () => {
+              if (!loading && userAnswer) {
+                handleSubmitAnswer();
+              }
             }
+          },
+          autoCommands: 'pi theta sqrt sum int',
+          autoOperatorNames: 'sin cos tan sec csc cot log ln',
+        });
+
+        // Set initial focus
+        mathFieldRef.current.focus();
+
+        // Cleanup function
+        return () => {
+          if (mathFieldRef.current) {
+            mathFieldRef.current.revert();
+            mathFieldRef.current = null;
           }
-        }
-      });
+        };
+      } catch (error) {
+        console.error('Error initializing MathQuill:', error);
+      }
     }
-  }, []);
+  }, [mathInputRef.current]); // Only re-run if the ref changes
 
   const fetchInitialQuestion = useCallback(async (topicId: number) => {
     setLoading(true);
     try {
-      const response = await axios.get(`http://localhost:3002/questions/${topicId}`);
+      const response = await axios.get(`http://localhost:8001/questions/${topicId}`);
       setCurrentQuestion(response.data);
     } catch (error: any) {
       showToast(error.response?.data?.detail || 'Something went wrong', 'error');
@@ -133,6 +166,62 @@ const QuestionPage = () => {
     }
   };
 
+  const formatMathExpression = (text: string) => {
+    return text
+      .replace(/\^(\d+)/g, '^{$1}')
+      .replace(/(\d+)\/(\d+)π/g, '\\frac{$1}{$2}\\pi')
+      .replace(/√\((.*?)\)/g, '\\sqrt{$1}')
+      .replace(/\bsin\b/g, '\\sin')
+      .replace(/\bcos\b/g, '\\cos')
+      .replace(/\btan\b/g, '\\tan')
+      .replace(/\bdx\b/g, '\\,dx')
+      .replace(/∫_([^∫]*?)(\s|\^)/g, '\\int_{$1}$2')
+      .replace(/θ/g, '\\theta')
+      .replace(/(\d+|\}|\))([a-zA-Z])/g, '$1\\,$2');
+  };
+
+  const renderMathExpression = (text: string) => {
+    // Split the text into segments that are either math or text
+    const segments = text.split(/((?:sin|cos|tan)\^?\d*θ|[=≤]|∫[^.]+|\([^)]+\)|dy\/dx|\d+\/\d+π|√\([^)]+\))/g);
+    
+    return segments.map((segment, index) => {
+      if (!segment.trim()) return null;
+
+      // Check if this segment is a mathematical expression
+      const isMath = /^(?:(?:sin|cos|tan)\^?\d*θ|[=≤]|∫[^.]+|\([^)]+\)|dy\/dx|\d+\/\d+π|√\([^)]+\))$/.test(segment.trim());
+      
+      if (isMath) {
+        const formattedMath = formatMathExpression(segment.trim());
+        return <InlineMath key={index}>{formattedMath}</InlineMath>;
+      }
+
+      // For text segments that might contain math symbols but aren't complete math expressions
+      const textParts = segment.split(/(\s*[=≤]\s*)/);
+      return textParts.map((part, partIndex) => {
+        if (part.match(/^\s*[=≤]\s*$/)) {
+          return <InlineMath key={`${index}-${partIndex}`}>{part.trim()}</InlineMath>;
+        }
+        return <span key={`${index}-${partIndex}`}>{part}</span>;
+      });
+    });
+  };
+
+  const formatQuestionContent = (content: string) => {
+    return content
+      .replace(/\[.*?\]/, '') // Remove the reference
+      .replace(/verbose,tmargin=.*?rmargin=.*?cm/, '') // Remove the LaTeX parameters
+      .replace(/\bnormalemulem\b/, '') // Remove the normalemulem text
+      .split('\n') // Split by newlines
+      .filter(line => line.trim() !== '') // Remove empty lines
+      .filter(line => line.trim() !== '*' && line.trim() !== '.') // Remove lone asterisks and periods
+      .join(' ') // Join all lines
+      .replace(/\s+/g, ' ') // Normalize spaces
+      .replace(/\.\s*(\[\d+\])/g, ' $1') // Remove period before point values
+      .split(/(?<=\]|\.)(?=\s*[A-Z])/) // Split into parts at sentence boundaries
+      .map(part => part.trim()) // Trim each part
+      .filter(part => part); // Remove empty parts
+  };
+
   if (!currentQuestion) {
     return (
       <div className="container text-center">
@@ -146,14 +235,63 @@ const QuestionPage = () => {
     <div className="container">
       <div className="box">
         <h2 className="heading">Question</h2>
-        <p className="mb-4" style={{ whiteSpace: 'pre-wrap' }}>
-          {currentQuestion.content}
-        </p>
+        <div className="question-content">
+          <div className="question-metadata">
+            <span className="question-reference">{currentQuestion.content.match(/\[.*?\]/)?.[0] || ''}</span>
+          </div>
+          <div className="question-text">
+            {formatQuestionContent(currentQuestion.content).map((part, index) => {
+              const cleanedPart = part.trim();
+              
+              if (cleanedPart.startsWith('Find') || cleanedPart.startsWith('Show')) {
+                return (
+                  <div key={index} className="question-part">
+                    <h3 className="question-subheading">{renderMathExpression(cleanedPart)}</h3>
+                  </div>
+                );
+              }
 
-        <div className="form-group">
+              return (
+                <p key={index} className="question-paragraph">
+                  {renderMathExpression(cleanedPart)}
+                </p>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="form-group mt-8">
           <label className="form-label">Your Answer:</label>
-          <div className="mathquill-editor">
-            <span ref={mathInputRef}></span>
+          <div className="math-input-container">
+            <div className="math-toolbar">
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('sqrt')} title="Square root">√</button>
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('int')} title="Integral">∫</button>
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('pi')} title="Pi">π</button>
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('theta')} title="Theta">θ</button>
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('^')} title="Power">x²</button>
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('/')} title="Fraction">⅟</button>
+              <div className="math-toolbar-divider"></div>
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('sin')} title="Sine">sin</button>
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('cos')} title="Cosine">cos</button>
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('tan')} title="Tangent">tan</button>
+              <div className="math-toolbar-divider"></div>
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('sum')} title="Summation">Σ</button>
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('infty')} title="Infinity">∞</button>
+            </div>
+            <div className="mathquill-editor">
+              <span ref={mathInputRef}></span>
+            </div>
+            <div className="math-input-help">
+              <p>Keyboard shortcuts:</p>
+              <ul>
+                <li>Type <code>/</code> for fractions</li>
+                <li>Type <code>sqrt</code> for square root</li>
+                <li>Type <code>^</code> for exponents</li>
+                <li>Type <code>pi</code> for π</li>
+                <li>Type <code>theta</code> for θ</li>
+                <li>Type <code>int</code> for ∫</li>
+              </ul>
+            </div>
           </div>
           <button
             className={`button button-primary ${loading ? 'loading' : ''}`}
