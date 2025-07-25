@@ -277,6 +277,8 @@ const QuestionPage = () => {
               <div className="math-toolbar-divider"></div>
               <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('sum')} title="Summation">Σ</button>
               <button type="button" className="math-symbol-btn" onClick={() => insertSymbol('infty')} title="Infinity">∞</button>
+              <div className="math-toolbar-divider"></div>
+              <button type="button" className="math-symbol-btn" onClick={() => insertSymbol(',')} title="Comma">,</button>
             </div>
             <div className="mathquill-editor">
               <span ref={mathInputRef}></span>
@@ -290,6 +292,7 @@ const QuestionPage = () => {
                 <li>Type <code>pi</code> for π</li>
                 <li>Type <code>theta</code> for θ</li>
                 <li>Type <code>int</code> for ∫</li>
+                <li>Separate multiple answers with commas</li>
               </ul>
             </div>
           </div>
